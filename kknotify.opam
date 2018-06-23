@@ -1,0 +1,15 @@
+opam-version: "2.0"
+maintainer: "kkeundotnet@gmail.com"
+authors: ["kkeundotnet"]
+homepage: "https://github.com/kkeundotnet/kknotify"
+bug-reports: "https://github.com/kkeundotnet/kknotify/issues"
+dev-repo: "https://github.com/kkeundotnet/kknotify.git"
+
+build: [
+  ["jbuilder" "serv_up"] {pinned}
+  ["jbuilder" "build" "-p" name "-j" jobs]
+]
+
+depends: [
+  "jbuilder" {build & >= "1.0+beta14"}
+]
