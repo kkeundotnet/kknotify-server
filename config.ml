@@ -3,7 +3,7 @@ let host = "kkeun.net"
 
 let port = 20004
 
-let key_path = ".kknotify.key"
+let key_path = Sys.getenv "HOME" ^ "/.kknotify.key"
 
 (* END USER OPTION *)
 
