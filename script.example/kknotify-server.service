@@ -1,7 +1,6 @@
 [Unit]
 Description=KKNotify server service
 
-
 [Service]
 User={{user-name}}
 WorkingDirectory=/home/{{user-name}}
@@ -12,7 +11,6 @@ RestartSec=10
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=kknotify-server
-
 
 [Install]
 WantedBy=multi-user.target
