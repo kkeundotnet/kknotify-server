@@ -6,7 +6,7 @@ kknotify-server
 Simple (**naive**, **insecure**, and **not-scalable**) notification
 server for Linux.  (actually a simple broadcasting server)
 
-How to Run
+How to run
 ------
 
 1.  Install opam and dune(jbuilder).
@@ -62,4 +62,4 @@ For more information:
 
 ******
 
-License note: This program is distributed as the public domain.
+License note: This program is distributed with the public domain.
