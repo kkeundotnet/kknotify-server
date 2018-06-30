@@ -2,11 +2,6 @@ let address = ((Unix.gethostbyname (Unix.gethostname ())).Unix.h_addr_list).(0)
 
 let port = 10004
 
-let with_lock mutex ~f =
-  Mutex.lock mutex ;
-  let v = f () in
-  Mutex.unlock mutex ; v
-
 module Id = struct
   type t = int
 
@@ -16,10 +11,22 @@ end
 module IdSet = Set.Make (Id)
 module IdMap = Map.Make (Id)
 
+let with_lock mutex ~f =
+  Mutex.lock mutex ;
+  let v = f () in
+  Mutex.unlock mutex ; v
+
 module MsgQueue = struct
-  let is_authorization_password msg =
-    Sha512.to_hex (Sha512.string msg)
-    = "db672c0fcfbc6c2f5b889d7a8e42c67260348d5ac8d47c7ecd1b3d50265ce4e31a32c6f8662528d6e01f041cf7a79c9bd35038d5166629e94b1c2432be872894"
+  let key =
+    let ic =
+      try open_in ".key" with Sys_error _ ->
+        Format.eprintf "ERROR: run 'make key_gen'@." ;
+        exit 1
+    in
+    try
+      let v = input_line ic in
+      close_in ic ; v
+    with e -> close_in_noerr ic ; raise e
 
   let authorized_ids, authorized_ids_mutex = (ref IdSet.empty, Mutex.create ())
 
@@ -39,7 +46,7 @@ module MsgQueue = struct
         | exception Queue.Empty -> None )
 
   let add_msg id msg =
-    if is_authorization_password msg then (
+    if msg = key then (
       Format.eprintf "thread %d is authorized@." id ;
       add_authorized_id id )
     else if is_authorized id then (
@@ -58,46 +65,52 @@ module OutChans = struct
   let bindings () = with_lock ocs_mutex ~f:(fun () -> IdMap.bindings !ocs)
 end
 
-let start_braodcast_thread () =
+let braodcast_thread () =
   let send_msg msg =
-    let msg_endline = msg ^ "\n" in
     let f (id, oc) =
-      try
-        output_string oc msg_endline ;
-        flush oc
+      try output_string oc msg ; output_char oc '\n' ; flush oc
       with Sys_error _ -> ()
     in
     List.iter f (OutChans.bindings ())
   in
-  let f () =
-    Format.eprintf "start broadcast thread@." ;
-    while true do
-      (* TODO: Polling is not cool. :( *)
-      Unix.sleep 2 ;
-      match MsgQueue.pop_msg () with None -> () | Some msg -> send_msg msg
-    done
-  in
-  Thread.create f ()
+  Format.eprintf "start broadcast thread@." ;
+  while true do
+    (* TODO: Polling is not cool. :( *)
+    Unix.sleep 2 ;
+    match MsgQueue.pop_msg () with None -> () | Some msg -> send_msg msg
+  done
 
-let start_listen_thread fd =
+let strip_CR s =
+  let len = String.length s in
+  if int_of_char s.[len - 1] = 13 then String.sub s 0 (len - 1) else s
+
+let listen_thread fd =
+  let exception StopListen in
   let id = Thread.id (Thread.self ()) in
   let ic, oc = (Unix.in_channel_of_descr fd, Unix.out_channel_of_descr fd) in
   OutChans.add id oc ;
   Format.eprintf "start listen thread: %d@." id ;
-  try while true do MsgQueue.add_msg id (input_line ic) done with _ ->
+  try
+    while true do
+      let msg = try strip_CR (input_line ic) with _ -> raise StopListen in
+      MsgQueue.add_msg id msg
+    done
+  with StopListen ->
     OutChans.remove id ;
     Format.eprintf "stop listen thread: %d@." id
 
+let ignore_thread (_: Thread.t) = ()
+
 let main () =
   Format.eprintf "start kknotify server@." ;
-  ignore (start_braodcast_thread () : Thread.t) ;
+  ignore_thread (Thread.create braodcast_thread ()) ;
   let sockaddr = Unix.ADDR_INET (address, port) in
   let sock = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   Unix.bind sock sockaddr ;
   Unix.listen sock 3 ;
   while true do
     let fd, caller = Unix.accept sock in
-    ignore (Thread.create start_listen_thread fd : Thread.t)
+    ignore_thread (Thread.create listen_thread fd)
   done ;
   prerr_endline "stop kknotify server"
 
