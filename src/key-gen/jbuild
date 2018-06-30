@@ -1,0 +1,6 @@
+(jbuild_version 1)
+
+(executable
+ ((name KKNotifyKeyGen)
+  (public_name kknotify-key-gen)
+  (package kknotify-server)))

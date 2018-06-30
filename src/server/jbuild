@@ -1,7 +1,7 @@
 (jbuild_version 1)
 
 (executable
- ((name kknotify_server)
-  (public_name kknotify_server)
+ ((name KKNotifyServer)
+  (public_name kknotify-server)
   (libraries (unix threads))
-  (package kknotify_server)))
+  (package kknotify-server)))

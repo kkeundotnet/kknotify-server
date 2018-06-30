@@ -2,7 +2,7 @@
 
 default: build
 
-CONFIGS := src/server/config.ml src/key_gen/config.ml src/kknotify/config.ml
+CONFIGS := src/server/config.ml src/key-gen/config.ml src/kknotify/config.ml
 
 $(CONFIGS): config.ml
 	@echo "set $@"

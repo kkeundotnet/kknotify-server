@@ -10,7 +10,7 @@ let key_path = ".kknotify.key"
 let get_key () =
   let ic =
     try open_in key_path with Sys_error _ ->
-      Format.eprintf "ERROR: run 'kknotify_key_gen' first@." ;
+      Format.eprintf "ERROR: run 'kknotify-key-gen' first@." ;
       exit 1
   in
   try
