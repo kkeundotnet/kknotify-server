@@ -6,8 +6,7 @@ bug-reports: "https://github.com/kkeundotnet/kknotify_server/issues"
 dev-repo: "https://github.com/kkeundotnet/kknotify_server.git"
 
 build: [
-  ["jbuilder" "kkotify_server"] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["make" "build"]
 ]
 
 depends: [
