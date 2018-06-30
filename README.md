@@ -1,4 +1,4 @@
-kknotify
+kknotify-server
 ======
 
-Notification server/client
+Notification server.  (actually a naive chatting server)
