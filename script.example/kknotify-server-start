@@ -1,0 +1,5 @@
+#!/bin/bash
+
+KKBINDIR={{path-to-kknotify-server}}/_build/install/default/bin
+$KKBINDIR/kknotify-key-gen
+$KKBINDIR/kknotify-server

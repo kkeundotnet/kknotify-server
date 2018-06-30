@@ -1,0 +1,18 @@
+[Unit]
+Description=KKNotify server service
+
+
+[Service]
+User={{user-name}}
+WorkingDirectory=/home/{{user-name}}
+ExecStart={{path-to-kknotify-server}}/script/kknotify-server-start
+ExecStop={{path-to-kknotify-server}}/script/kknotify-server-stop
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=kknotify-server
+
+
+[Install]
+WantedBy=multi-user.target
