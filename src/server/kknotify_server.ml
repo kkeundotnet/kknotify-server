@@ -1,7 +1,3 @@
-let address = ((Unix.gethostbyname (Unix.gethostname ())).Unix.h_addr_list).(0)
-
-let port = 10004
-
 module Id = struct
   type t = int
 
@@ -17,17 +13,6 @@ let with_lock mutex ~f =
   Mutex.unlock mutex ; v
 
 module MsgQueue = struct
-  let key =
-    let ic =
-      try open_in ".key" with Sys_error _ ->
-        Format.eprintf "ERROR: run 'make key_gen'@." ;
-        exit 1
-    in
-    try
-      let v = input_line ic in
-      close_in ic ; v
-    with e -> close_in_noerr ic ; raise e
-
   let authorized_ids, authorized_ids_mutex = (ref IdSet.empty, Mutex.create ())
 
   let is_authorized id =
@@ -45,14 +30,16 @@ module MsgQueue = struct
         | msg -> Some msg
         | exception Queue.Empty -> None )
 
-  let add_msg id msg =
-    if msg = key then (
-      Format.eprintf "thread %d is authorized@." id ;
-      add_authorized_id id )
-    else if is_authorized id then (
-      Format.eprintf "add msg from %d to queue@." id ;
-      with_lock msgs_mutex ~f:(fun () -> Queue.add msg msgs) )
-    else Format.eprintf "ignore msg from %d to queue@." id
+  let add_msg =
+    let key = Config.get_key () in
+    fun id msg ->
+      if msg = key then (
+        Format.eprintf "thread %d is authorized@." id ;
+        add_authorized_id id )
+      else if is_authorized id then (
+        Format.eprintf "add msg from %d to queue@." id ;
+        with_lock msgs_mutex ~f:(fun () -> Queue.add msg msgs) )
+      else Format.eprintf "ignore msg from %d to queue@." id
 end
 
 module OutChans = struct
@@ -104,7 +91,8 @@ let ignore_thread (_: Thread.t) = ()
 let main () =
   Format.eprintf "start kknotify server@." ;
   ignore_thread (Thread.create braodcast_thread ()) ;
-  let sockaddr = Unix.ADDR_INET (address, port) in
+  let address = ((Unix.gethostbyname Config.host).Unix.h_addr_list).(0) in
+  let sockaddr = Unix.ADDR_INET (address, Config.port) in
   let sock = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   Unix.bind sock sockaddr ;
   Unix.listen sock 3 ;

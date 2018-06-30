@@ -10,4 +10,8 @@ let gen_rand length =
   let gen _ = String.make 1 (char_of_int (gen ())) in
   String.concat "" (Array.to_list (Array.init length gen))
 
-let () = print_endline (gen_rand 10)
+let () =
+  let oc = open_out Config.key_path in
+  output_string oc (gen_rand 10) ;
+  output_char oc '\n' ;
+  close_out oc

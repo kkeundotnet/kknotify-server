@@ -2,4 +2,5 @@
 _build
 .merlin
 *.install
-.key
+/.kknotify.key
+/src/*/config.ml
