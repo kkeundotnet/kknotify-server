@@ -3,5 +3,5 @@
 (executable
  ((name kknotify_server)
   (public_name kknotify_server)
-  (libraries (unix))
+  (libraries (unix threads sha))
   (package kknotify_server)))

@@ -1,54 +1,104 @@
-let domain_of = function
-  | Unix.ADDR_UNIX _ -> Unix.PF_UNIX
-  | Unix.ADDR_INET _ -> Unix.PF_INET
+let address = ((Unix.gethostbyname (Unix.gethostname ())).Unix.h_addr_list).(0)
 
-let establish_server server_fun sockaddr =
-  let domain = domain_of sockaddr in
-  let sock = Unix.socket domain Unix.SOCK_STREAM 0 in
+let port = 10004
+
+let with_lock mutex ~f =
+  Mutex.lock mutex ;
+  let v = f () in
+  Mutex.unlock mutex ; v
+
+module Id = struct
+  type t = int
+
+  let compare = compare
+end
+
+module IdSet = Set.Make (Id)
+module IdMap = Map.Make (Id)
+
+module MsgQueue = struct
+  let is_authorization_password msg =
+    Sha512.to_hex (Sha512.string msg)
+    = "db672c0fcfbc6c2f5b889d7a8e42c67260348d5ac8d47c7ecd1b3d50265ce4e31a32c6f8662528d6e01f041cf7a79c9bd35038d5166629e94b1c2432be872894"
+
+  let authorized_ids, authorized_ids_mutex = (ref IdSet.empty, Mutex.create ())
+
+  let is_authorized id =
+    with_lock authorized_ids_mutex ~f:(fun () -> IdSet.mem id !authorized_ids)
+
+  let add_authorized_id id =
+    with_lock authorized_ids_mutex ~f:(fun () ->
+        authorized_ids := IdSet.add id !authorized_ids )
+
+  let msgs, msgs_mutex = ((Queue.create () : string Queue.t), Mutex.create ())
+
+  let pop_msg () =
+    with_lock msgs_mutex ~f:(fun () ->
+        match Queue.pop msgs with
+        | msg -> Some msg
+        | exception Queue.Empty -> None )
+
+  let add_msg id msg =
+    if is_authorization_password msg then (
+      Format.eprintf "thread %d is authorized@." id ;
+      add_authorized_id id )
+    else if is_authorized id then (
+      Format.eprintf "add msg from %d to queue@." id ;
+      with_lock msgs_mutex ~f:(fun () -> Queue.add msg msgs) )
+    else Format.eprintf "ignore msg from %d to queue@." id
+end
+
+module OutChans = struct
+  let ocs, ocs_mutex = (ref IdMap.empty, Mutex.create ())
+
+  let add id oc = with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.add id oc !ocs)
+
+  let remove id = with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.remove id !ocs)
+
+  let bindings () = with_lock ocs_mutex ~f:(fun () -> IdMap.bindings !ocs)
+end
+
+let start_braodcast_thread () =
+  let send_msg msg =
+    let msg_endline = msg ^ "\n" in
+    let f (id, oc) =
+      try
+        output_string oc msg_endline ;
+        flush oc
+      with Sys_error _ -> ()
+    in
+    List.iter f (OutChans.bindings ())
+  in
+  let f () =
+    Format.eprintf "start broadcast thread@." ;
+    while true do
+      (* TODO: Polling is not cool. :( *)
+      Unix.sleep 2 ;
+      match MsgQueue.pop_msg () with None -> () | Some msg -> send_msg msg
+    done
+  in
+  Thread.create f ()
+
+let start_listen_thread fd =
+  let id = Thread.id (Thread.self ()) in
+  let ic, oc = (Unix.in_channel_of_descr fd, Unix.out_channel_of_descr fd) in
+  OutChans.add id oc ;
+  Format.eprintf "start listen thread: %d@." id ;
+  try while true do MsgQueue.add_msg id (input_line ic) done with _ ->
+    OutChans.remove id ;
+    Format.eprintf "stop listen thread: %d@." id
+
+let main () =
+  Format.eprintf "start kknotify server@." ;
+  ignore (start_braodcast_thread () : Thread.t) ;
+  let sockaddr = Unix.ADDR_INET (address, port) in
+  let sock = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   Unix.bind sock sockaddr ;
   Unix.listen sock 3 ;
   while true do
-    let s, caller = Unix.accept sock in
-    match Unix.fork () with
-    | 0 ->
-        if Unix.fork () <> 0 then exit 0 ;
-        let inchan = Unix.in_channel_of_descr s
-        and outchan = Unix.out_channel_of_descr s in
-        server_fun inchan outchan ;
-        close_in inchan ;
-        close_out outchan ;
-        exit 0
-    | id ->
-        Unix.close s ;
-        ignore (Unix.waitpid [] id)
-  done
+    let fd, caller = Unix.accept sock in
+    ignore (Thread.create start_listen_thread fd : Thread.t)
+  done ;
+  prerr_endline "stop kknotify server"
 
-let get_my_addr () =
-  ((Unix.gethostbyname (Unix.gethostname ())).Unix.h_addr_list).(0)
-
-let main_server serv_fun =
-  if Array.length Sys.argv < 2 then Printf.eprintf "usage : serv_up port\n"
-  else
-    try
-      let port = int_of_string Sys.argv.(1) in
-      let my_address = get_my_addr () in
-      establish_server serv_fun (Unix.ADDR_INET (my_address, port))
-    with Failure s -> Printf.eprintf "serv_up failure: %s\n" s
-
-let uppercase_service ic oc =
-  try
-    while true do
-      let s = input_line ic in
-      let r = String.uppercase_ascii s in
-      output_string oc (r ^ "\n") ;
-      flush oc
-    done
-  with _ ->
-    Printf.printf "End of text\n" ;
-    flush stdout ;
-    exit 0
-
-let go_uppercase_service () =
-  Unix.handle_unix_error main_server uppercase_service
-
-let () = go_uppercase_service ()
+let () = main ()

@@ -1,5 +1,3 @@
-# Frontend to dune.
-
 .PHONY: default build install uninstall clean
 
 default: build
@@ -15,6 +13,8 @@ uninstall:
 
 clean:
 	jbuilder clean
-# Optionally, remove all files/folders ignored by git as defined
-# in .gitignore (-X).
 	git clean -dfXq
+
+# TODO: Remove: this is just for testing
+run: build
+	_build/install/default/bin/kknotify_server
