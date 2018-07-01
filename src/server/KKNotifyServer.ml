@@ -22,6 +22,10 @@ module MsgQueue = struct
     with_lock authorized_ids_mutex ~f:(fun () ->
         authorized_ids := IdSet.add id !authorized_ids )
 
+  let remove_authorized_id id =
+    with_lock authorized_ids_mutex ~f:(fun () ->
+        authorized_ids := IdSet.remove id !authorized_ids )
+
   let msgs, msgs_mutex = ((Queue.create () : string Queue.t), Mutex.create ())
 
   let pop_msg () =
@@ -45,18 +49,26 @@ end
 module OutChans = struct
   let ocs, ocs_mutex = (ref IdMap.empty, Mutex.create ())
 
-  let add id oc = with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.add id oc !ocs)
+  let add id oc =
+    Format.eprintf "start listen thread: %d@." id ;
+    with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.add id oc !ocs)
 
-  let remove id = with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.remove id !ocs)
+  let remove id =
+    Format.eprintf "stop listen thread: %d@." id ;
+    with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.remove id !ocs)
 
   let bindings () = with_lock ocs_mutex ~f:(fun () -> IdMap.bindings !ocs)
 end
+
+let remove_id id =
+  OutChans.remove id ;
+  MsgQueue.remove_authorized_id id
 
 let braodcast_thread () =
   let send_msg msg =
     let f (id, oc) =
       try output_string oc msg ; output_char oc '\n' ; flush oc
-      with Sys_error _ -> ()
+      with Sys_error _ -> remove_id id
     in
     List.iter f (OutChans.bindings ())
   in
@@ -76,15 +88,12 @@ let listen_thread fd =
   let id = Thread.id (Thread.self ()) in
   let ic, oc = (Unix.in_channel_of_descr fd, Unix.out_channel_of_descr fd) in
   OutChans.add id oc ;
-  Format.eprintf "start listen thread: %d@." id ;
   try
     while true do
       let msg = try strip_CR (input_line ic) with _ -> raise StopListen in
       MsgQueue.add_msg id msg
     done
-  with StopListen ->
-    OutChans.remove id ;
-    Format.eprintf "stop listen thread: %d@." id
+  with StopListen -> remove_id id
 
 let ignore_thread (_: Thread.t) = ()
 
