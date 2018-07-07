@@ -4,17 +4,28 @@ module Id = struct
   let compare = compare
 end
 
+(* authorized ids *)
+module AuthIds : sig
+  val mem : Id.t -> bool
+
+  val add : Id.t -> unit
+
+  val remove : Id.t -> unit
+end = struct
+  module M = SharedSet.Make (Id)
+
+  let auth_ids = M.empty ()
+
+  let lift ~f id = f id auth_ids
+
+  let mem = lift ~f:M.mem
+
+  let add = lift ~f:M.add
+
+  let remove = lift ~f:M.remove
+end
+
 module MsgQueue = struct
-  module SharedIdSet = SharedSet.Make (Id)
-
-  let authorized_ids = SharedIdSet.empty ()
-
-  let is_authorized id = SharedIdSet.mem id authorized_ids
-
-  let add_authorized_id id = SharedIdSet.add id authorized_ids
-
-  let remove_authorized_id id = SharedIdSet.remove id authorized_ids
-
   module SharedMsg = Shared.Make (struct
     type t = string Queue.t
   end)
@@ -34,8 +45,8 @@ module MsgQueue = struct
     fun id msg ->
       if msg = key then (
         Format.eprintf "thread %d is authorized@." id ;
-        add_authorized_id id )
-      else if is_authorized id then (
+        AuthIds.add id )
+      else if AuthIds.mem id then (
         Format.eprintf "add msg from %d to queue@." id ;
         push_msg msg )
       else Format.eprintf "ignore msg from %d to queue@." id
@@ -61,9 +72,7 @@ module OutChans = struct
   let bindings () = SharedOutChans.apply ocs ~f:IdMap.bindings
 end
 
-let remove_id id =
-  OutChans.remove id ;
-  MsgQueue.remove_authorized_id id
+let remove_id id = OutChans.remove id ; AuthIds.remove id
 
 let braodcast_thread () =
   let send_msg msg =
