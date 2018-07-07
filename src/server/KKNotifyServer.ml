@@ -25,20 +25,26 @@ end = struct
   let remove = lift ~f:M.remove
 end
 
-module MsgQueue = struct
-  module SharedMsg = Shared.Make (struct
+(* message queue *)
+module MsgQueue : sig
+  val pop_msg : unit -> string option
+
+  val process_msg : Id.t -> string -> unit
+end = struct
+  module M = Shared.Make (struct
     type t = string Queue.t
   end)
 
-  let msgs = SharedMsg.init (Queue.create ())
+  let msgs = M.init (Queue.create ())
 
   let pop_msg () =
-    SharedMsg.apply msgs ~f:(fun msgs ->
+    M.apply msgs ~f:(fun msgs ->
         match Queue.pop msgs with
         | msg -> Some msg
         | exception Queue.Empty -> None )
 
-  let push_msg msg = SharedMsg.apply msgs ~f:(Queue.push msg)
+  (* TODO: queue no-side-effect *)
+  let push_msg msg = M.apply msgs ~f:(Queue.push msg)
 
   let process_msg =
     let key = Config.get_key () in
@@ -52,24 +58,31 @@ module MsgQueue = struct
       else Format.eprintf "ignore msg from %d to queue@." id
 end
 
-module OutChans = struct
-  module IdMap = Map.Make (Id)
+(* map from id to output channel *)
+module OutChans : sig
+  val add : Id.t -> out_channel -> unit
 
-  module SharedOutChans = Shared.Make (struct
-    type t = out_channel IdMap.t
-  end)
+  val remove : Id.t -> unit
 
-  let ocs = SharedOutChans.init IdMap.empty
+  val bindings : unit -> (Id.t * out_channel) list
+end = struct
+  module M =
+    SharedMap.Make (Id)
+      (struct
+        type t = out_channel
+      end)
+
+  let ocs = M.empty ()
 
   let add id oc =
     Format.eprintf "start listen thread: %d@." id ;
-    SharedOutChans.update ocs ~f:(IdMap.add id oc)
+    M.add id oc ocs
 
   let remove id =
     Format.eprintf "stop listen thread: %d@." id ;
-    SharedOutChans.update ocs ~f:(IdMap.remove id)
+    M.remove id ocs
 
-  let bindings () = SharedOutChans.apply ocs ~f:IdMap.bindings
+  let bindings () = M.bindings ocs
 end
 
 let remove_id id = OutChans.remove id ; AuthIds.remove id
@@ -89,11 +102,11 @@ let braodcast_thread () =
     match MsgQueue.pop_msg () with None -> () | Some msg -> send_msg msg
   done
 
-let strip_CR s =
-  let len = String.length s in
-  if int_of_char s.[len - 1] = 13 then String.sub s 0 (len - 1) else s
-
 let listen_thread fd =
+  let strip_CR s =
+    let len = String.length s in
+    if int_of_char s.[len - 1] = 13 then String.sub s 0 (len - 1) else s
+  in
   let exception StopListen in
   let id = Thread.id (Thread.self ()) in
   let ic, oc = (Unix.in_channel_of_descr fd, Unix.out_channel_of_descr fd) in
@@ -105,9 +118,8 @@ let listen_thread fd =
     done
   with StopListen -> remove_id id
 
-let ignore_thread (_: Thread.t) = ()
-
 let main () =
+  let ignore_thread (_: Thread.t) = () in
   Format.eprintf "start kknotify server@." ;
   ignore_thread (Thread.create braodcast_thread ()) ;
   let address = ((Unix.gethostbyname Config.host).Unix.h_addr_list).(0) in
