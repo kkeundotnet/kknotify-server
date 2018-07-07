@@ -5,19 +5,15 @@ module Id = struct
 end
 
 module MsgQueue = struct
-  module IdSet = Set.Make (Id)
-  module SharedIdSet = Shared.Make (IdSet)
+  module SharedIdSet = SharedSet.Make (Id)
 
-  let authorized_ids = SharedIdSet.init IdSet.empty
+  let authorized_ids = SharedIdSet.empty ()
 
-  let is_authorized id =
-    SharedIdSet.apply authorized_ids ~f:(fun ids -> IdSet.mem id ids)
+  let is_authorized id = SharedIdSet.mem id authorized_ids
 
-  let add_authorized_id id =
-    SharedIdSet.update authorized_ids ~f:(fun ids -> IdSet.add id ids)
+  let add_authorized_id id = SharedIdSet.add id authorized_ids
 
-  let remove_authorized_id id =
-    SharedIdSet.update authorized_ids ~f:(fun ids -> IdSet.remove id ids)
+  let remove_authorized_id id = SharedIdSet.remove id authorized_ids
 
   module SharedMsg = Shared.Make (struct
     type t = string Queue.t
@@ -31,7 +27,7 @@ module MsgQueue = struct
         | msg -> Some msg
         | exception Queue.Empty -> None )
 
-  let push_msg msg = SharedMsg.apply msgs ~f:(fun msgs -> Queue.push msg msgs)
+  let push_msg msg = SharedMsg.apply msgs ~f:(Queue.push msg)
 
   let process_msg =
     let key = Config.get_key () in
