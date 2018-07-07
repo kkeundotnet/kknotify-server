@@ -4,37 +4,36 @@ module Id = struct
   let compare = compare
 end
 
-module IdSet = Set.Make (Id)
-module IdMap = Map.Make (Id)
-
-let with_lock mutex ~f =
-  Mutex.lock mutex ;
-  let v = f () in
-  Mutex.unlock mutex ; v
-
 module MsgQueue = struct
-  let authorized_ids, authorized_ids_mutex = (ref IdSet.empty, Mutex.create ())
+  module IdSet = Set.Make (Id)
+  module SharedIdSet = Shared.Make (IdSet)
+
+  let authorized_ids = SharedIdSet.init IdSet.empty
 
   let is_authorized id =
-    with_lock authorized_ids_mutex ~f:(fun () -> IdSet.mem id !authorized_ids)
+    SharedIdSet.apply authorized_ids ~f:(fun ids -> IdSet.mem id ids)
 
   let add_authorized_id id =
-    with_lock authorized_ids_mutex ~f:(fun () ->
-        authorized_ids := IdSet.add id !authorized_ids )
+    SharedIdSet.update authorized_ids ~f:(fun ids -> IdSet.add id ids)
 
   let remove_authorized_id id =
-    with_lock authorized_ids_mutex ~f:(fun () ->
-        authorized_ids := IdSet.remove id !authorized_ids )
+    SharedIdSet.update authorized_ids ~f:(fun ids -> IdSet.remove id ids)
 
-  let msgs, msgs_mutex = ((Queue.create () : string Queue.t), Mutex.create ())
+  module SharedMsg = Shared.Make (struct
+    type t = string Queue.t
+  end)
+
+  let msgs = SharedMsg.init (Queue.create ())
 
   let pop_msg () =
-    with_lock msgs_mutex ~f:(fun () ->
+    SharedMsg.apply msgs ~f:(fun msgs ->
         match Queue.pop msgs with
         | msg -> Some msg
         | exception Queue.Empty -> None )
 
-  let add_msg =
+  let push_msg msg = SharedMsg.apply msgs ~f:(fun msgs -> Queue.push msg msgs)
+
+  let process_msg =
     let key = Config.get_key () in
     fun id msg ->
       if msg = key then (
@@ -42,22 +41,28 @@ module MsgQueue = struct
         add_authorized_id id )
       else if is_authorized id then (
         Format.eprintf "add msg from %d to queue@." id ;
-        with_lock msgs_mutex ~f:(fun () -> Queue.add msg msgs) )
+        push_msg msg )
       else Format.eprintf "ignore msg from %d to queue@." id
 end
 
 module OutChans = struct
-  let ocs, ocs_mutex = (ref IdMap.empty, Mutex.create ())
+  module IdMap = Map.Make (Id)
+
+  module SharedOutChans = Shared.Make (struct
+    type t = out_channel IdMap.t
+  end)
+
+  let ocs = SharedOutChans.init IdMap.empty
 
   let add id oc =
     Format.eprintf "start listen thread: %d@." id ;
-    with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.add id oc !ocs)
+    SharedOutChans.update ocs ~f:(IdMap.add id oc)
 
   let remove id =
     Format.eprintf "stop listen thread: %d@." id ;
-    with_lock ocs_mutex ~f:(fun () -> ocs := IdMap.remove id !ocs)
+    SharedOutChans.update ocs ~f:(IdMap.remove id)
 
-  let bindings () = with_lock ocs_mutex ~f:(fun () -> IdMap.bindings !ocs)
+  let bindings () = SharedOutChans.apply ocs ~f:IdMap.bindings
 end
 
 let remove_id id =
@@ -91,7 +96,7 @@ let listen_thread fd =
   try
     while true do
       let msg = try strip_CR (input_line ic) with _ -> raise StopListen in
-      MsgQueue.add_msg id msg
+      MsgQueue.process_msg id msg
     done
   with StopListen -> remove_id id
 
