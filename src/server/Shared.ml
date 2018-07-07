@@ -21,7 +21,7 @@ module Make (D : DataS) : S with type elt = D.t = struct
 
   let with_lock {data; mutex} ~f =
     Mutex.lock mutex ;
-    let v = f data in
+    let v = try f data with e -> Mutex.unlock mutex ; raise e in
     Mutex.unlock mutex ; v
 
   let init data = {data; mutex= Mutex.create ()}
