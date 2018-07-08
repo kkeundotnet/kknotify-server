@@ -132,6 +132,6 @@ let main () =
     let fd, caller = Unix.accept sock in
     ignore_thread (Thread.create listen_thread fd)
   done ;
-  prerr_endline "stop kknotify server"
+  Format.eprintf "stop kknotify server@."
 
 let () = main ()
