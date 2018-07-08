@@ -64,7 +64,7 @@ module OutChans : sig
 
   val remove : Id.t -> unit
 
-  val bindings : unit -> (Id.t * out_channel) list
+  val iter : f:(Id.t -> out_channel -> unit) -> unit
 end = struct
   module M =
     SharedMap.Make (Id)
@@ -83,24 +83,22 @@ end = struct
     M.remove id ocs ;
     Format.eprintf "currently listening: %a@." M.pp ocs
 
-  let bindings () = M.bindings ocs
+  let iter ~f = M.iter ~f ocs
 end
 
 let remove_id id = OutChans.remove id ; AuthIds.remove id
 
 let braodcast_thread () =
-  let send_msg msg =
-    let f (id, oc) =
-      try output_string oc msg ; output_char oc '\n' ; flush oc
-      with Sys_error _ -> remove_id id
-    in
-    List.iter f (OutChans.bindings ())
-  in
   Format.eprintf "start broadcast thread@." ;
   while true do
     (* TODO: Polling is not cool. :( *)
     Unix.sleep 2 ;
-    match MsgQueue.pop_msg () with None -> () | Some msg -> send_msg msg
+    match MsgQueue.pop_msg () with
+    | None -> ()
+    | Some msg ->
+        OutChans.iter ~f:(fun id oc ->
+            try output_string oc msg ; output_char oc '\n' ; flush oc
+            with Sys_error _ -> remove_id id )
   done
 
 let listen_thread fd =
