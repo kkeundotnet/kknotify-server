@@ -12,6 +12,8 @@ module type S = sig
   val apply : t -> f:(elt -> 'a) -> 'a
 
   val update : t -> f:(elt -> elt) -> unit
+
+  val apply_update : t -> f:(elt -> 'a * elt) -> 'a
 end
 
 module Make (D : DataS) : S with type elt = D.t = struct
@@ -29,4 +31,10 @@ module Make (D : DataS) : S with type elt = D.t = struct
   let apply x ~f = with_lock x ~f:(fun data -> f data)
 
   let update x ~f = apply x ~f:(fun data -> x.data <- f data)
+
+  let apply_update x ~f =
+    with_lock x ~f:(fun data ->
+        let v, data' = f data in
+        x.data <- data' ;
+        v )
 end

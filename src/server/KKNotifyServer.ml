@@ -25,26 +25,24 @@ end = struct
   let remove = lift ~f:M.remove
 end
 
+module Msg = struct
+  type t = string
+end
+
 (* message queue *)
 module MsgQueue : sig
-  val pop_msg : unit -> string option
+  val pop_msg : unit -> Msg.t option
 
-  val process_msg : Id.t -> string -> unit
+  val process_msg : Id.t -> Msg.t -> unit
 end = struct
-  module M = Shared.Make (struct
-    type t = string Queue.t
-  end)
+  module M = SharedQueue.Make (Msg)
 
-  let msgs = M.init (Queue.create ())
+  let msgs = M.empty ()
 
   let pop_msg () =
-    M.apply msgs ~f:(fun msgs ->
-        match Queue.pop msgs with
-        | msg -> Some msg
-        | exception Queue.Empty -> None )
+    match M.pop msgs with msg -> Some msg | exception M.Empty -> None
 
-  (* TODO: queue no-side-effect *)
-  let push_msg msg = M.apply msgs ~f:(Queue.push msg)
+  let push_msg msg = M.push msg msgs
 
   let process_msg =
     let key = Config.get_key () in
