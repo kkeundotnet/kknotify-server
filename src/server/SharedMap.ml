@@ -1,3 +1,9 @@
+module type KeyS = sig
+  include Map.OrderedType
+
+  val pp : Format.formatter -> t -> unit
+end
+
 module type ValueS = sig
   type t
 end
@@ -60,9 +66,11 @@ module type S = sig
   val find_last : t -> f:(key -> bool) -> key * value
 
   val find_last_opt : t -> f:(key -> bool) -> (key * value) option
+
+  val pp : Format.formatter -> t -> unit
 end
 
-module Make (K : Map.OrderedType) (V : ValueS) :
+module Make (K : KeyS) (V : ValueS) :
   S with type key = K.t and type value = V.t =
 struct
   module M = Map.Make (K)
@@ -140,4 +148,16 @@ struct
   let find_last = lift_apply_g ~g:M.find_last
 
   let find_last_opt = lift_apply_g ~g:M.find_last_opt
+
+  let pp fmt x =
+    let pp' fmt x =
+      Format.fprintf fmt "[@[" ;
+      if not (M.is_empty x) then (
+        let k, _v = M.min_binding x in
+        Format.fprintf fmt "%a" K.pp k ;
+        let x' = M.remove k x in
+        M.iter (fun k _v -> Format.fprintf fmt ",@;%a" K.pp k) x' ) ;
+      Format.fprintf fmt "@]]"
+    in
+    SM.apply x ~f:(fun x -> pp' fmt x)
 end

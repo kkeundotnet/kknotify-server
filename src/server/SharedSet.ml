@@ -1,3 +1,9 @@
+module type OrderedType = sig
+  include Map.OrderedType
+
+  val pp : Format.formatter -> t -> unit
+end
+
 module type S = sig
   type elt
 
@@ -56,9 +62,11 @@ module type S = sig
   val find_last : t -> f:(elt -> bool) -> elt
 
   val find_last_opt : t -> f:(elt -> bool) -> elt option
+
+  val pp : Format.formatter -> t -> unit
 end
 
-module Make (Ord : Set.OrderedType) : S with type elt = Ord.t = struct
+module Make (Ord : OrderedType) : S with type elt = Ord.t = struct
   module M = Set.Make (Ord)
   module SM = Shared.Make (M)
 
@@ -129,4 +137,16 @@ module Make (Ord : Set.OrderedType) : S with type elt = Ord.t = struct
   let find_last = lift_apply_g ~g:M.find_last
 
   let find_last_opt = lift_apply_g ~g:M.find_last_opt
+
+  let pp fmt x =
+    let pp' fmt x =
+      Format.fprintf fmt "[@[" ;
+      if not (M.is_empty x) then (
+        let e = M.min_elt x in
+        Format.fprintf fmt "%a" Ord.pp e ;
+        let x' = M.remove e x in
+        M.iter (fun e -> Format.fprintf fmt ",@;%a" Ord.pp e) x' ) ;
+      Format.fprintf fmt "@]]"
+    in
+    SM.apply x ~f:(fun x -> pp' fmt x)
 end

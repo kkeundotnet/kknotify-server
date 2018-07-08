@@ -2,6 +2,8 @@ module Id = struct
   type t = int
 
   let compare = compare
+
+  let pp fmt x = Format.fprintf fmt "%d" x
 end
 
 (* authorized ids *)
@@ -22,7 +24,9 @@ end = struct
 
   let add = lift ~f:M.add
 
-  let remove = lift ~f:M.remove
+  let remove id =
+    M.remove id auth_ids ;
+    Format.eprintf "current auth_ids: %a@." M.pp auth_ids
 end
 
 module Msg = struct
@@ -42,8 +46,6 @@ end = struct
   let pop_msg () =
     match M.pop msgs with msg -> Some msg | exception M.Empty -> None
 
-  let push_msg msg = M.push msg msgs
-
   let process_msg =
     let key = Config.get_key () in
     fun id msg ->
@@ -52,7 +54,7 @@ end = struct
         AuthIds.add id )
       else if AuthIds.mem id then (
         Format.eprintf "add msg from %d to queue@." id ;
-        push_msg msg )
+        M.push msg msgs )
       else Format.eprintf "ignore msg from %d to queue@." id
 end
 
@@ -78,7 +80,8 @@ end = struct
 
   let remove id =
     Format.eprintf "stop listen thread: %d@." id ;
-    M.remove id ocs
+    M.remove id ocs ;
+    Format.eprintf "currently listening: %a@." M.pp ocs
 
   let bindings () = M.bindings ocs
 end
