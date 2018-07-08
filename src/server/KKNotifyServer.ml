@@ -64,6 +64,10 @@ module OutChans : sig
 
   val remove : Id.t -> unit
 
+  val bindings : unit -> (Id.t * out_channel) list
+
+  (* TODO: remove later *)
+
   val iter : f:(Id.t -> out_channel -> unit) -> unit
 end = struct
   module M =
@@ -83,6 +87,9 @@ end = struct
     M.remove id ocs ;
     Format.eprintf "currently listening: %a@." M.pp ocs
 
+  let bindings () = M.bindings ocs
+
+  (* TODO: remove later *)
   let iter ~f = M.iter ~f ocs
 end
 
@@ -96,9 +103,17 @@ let braodcast_thread () =
     match MsgQueue.pop_msg () with
     | None -> ()
     | Some msg ->
+        let f (id, oc) =
+          try output_string oc msg ; output_char oc '\n' ; flush oc
+          with Sys_error _ -> remove_id id
+        in
+        List.iter f (OutChans.bindings ())
+    (* TODO: This may occur deadlock. It will be removed after adopting a safer
+       type checking for that.
+
         OutChans.iter ~f:(fun id oc ->
             try output_string oc msg ; output_char oc '\n' ; flush oc
-            with Sys_error _ -> remove_id id )
+            with Sys_error _ -> remove_id id ) *)
   done
 
 let listen_thread fd =
